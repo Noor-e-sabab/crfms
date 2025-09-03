@@ -74,10 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_grades'])) {
 }
 
 // Get faculty sections for current semester
-$query = "SELECT sec.*, c.title, c.course_id, c.credits,
+$query = "SELECT sec.*, c.title, c.course_id, c.total_credits as credits, sec.section_number,
+          r.room_number as room, r.building,
           (SELECT COUNT(*) FROM registration WHERE section_id = sec.section_id AND status = 'registered') as enrolled
           FROM sections sec 
           JOIN courses c ON sec.course_id = c.course_id
+          LEFT JOIN rooms r ON sec.room_id = r.room_id
           WHERE sec.faculty_id = ? AND sec.semester = ? AND sec.year = ?
           ORDER BY sec.section_id";
 $stmt = $db->prepare($query);
@@ -92,8 +94,11 @@ if (isset($_GET['section_id'])) {
     $section_id = (int)$_GET['section_id'];
     
     // Get section details
-    $query = "SELECT sec.*, c.title, c.course_id, c.credits FROM sections sec 
+    $query = "SELECT sec.*, c.title, c.course_id, c.total_credits as credits, sec.section_number,
+              r.room_number as room, r.building
+              FROM sections sec 
               JOIN courses c ON sec.course_id = c.course_id
+              LEFT JOIN rooms r ON sec.room_id = r.room_id
               WHERE sec.section_id = ? AND sec.faculty_id = ?";
     $stmt = $db->prepare($query);
     $stmt->bind_param('ii', $section_id, $faculty_id);
@@ -174,6 +179,7 @@ require_once '../includes/header.php';
                     <thead>
                         <tr>
                             <th>Course</th>
+                            <th>Section</th>
                             <th>Title</th>
                             <th>Credits</th>
                             <th>Schedule</th>
@@ -189,6 +195,11 @@ require_once '../includes/header.php';
                         ?>
                         <tr>
                             <td><strong><?php echo sanitizeInput($section['course_id']); ?></strong></td>
+                            <td>
+                                <span class="badge bg-primary">
+                                    <?php echo sanitizeInput($section['section_number'] ?? 'N/A'); ?>
+                                </span>
+                            </td>
                             <td><?php echo sanitizeInput($section['title']); ?></td>
                             <td><?php echo $section['credits']; ?></td>
                             <td>
@@ -196,7 +207,16 @@ require_once '../includes/header.php';
                                     <?php echo formatSchedule($section['schedule_days'], $section['schedule_time']); ?>
                                 </span>
                             </td>
-                            <td><?php echo sanitizeInput($section['room']); ?></td>
+                            <td>
+                                <?php if (!empty($section['room'])): ?>
+                                    <?php echo sanitizeInput($section['room']); ?>
+                                    <?php if (!empty($section['building'])): ?>
+                                        <br><small class="text-muted"><?php echo sanitizeInput($section['building']); ?></small>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted">Not assigned</span>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <span class="badge bg-primary">
                                     <?php echo $section['enrolled'] . '/' . $section['capacity']; ?>
@@ -247,6 +267,12 @@ require_once '../includes/header.php';
                 <strong>Course:</strong><br>
                 <?php echo sanitizeInput($selected_section['course_id']); ?>
             </div>
+            <div class="col-md-2">
+                <strong>Section:</strong><br>
+                <span class="badge bg-primary">
+                    <?php echo sanitizeInput($selected_section['section_number'] ?? 'N/A'); ?>
+                </span>
+            </div>
             <div class="col-md-3">
                 <strong>Title:</strong><br>
                 <?php echo sanitizeInput($selected_section['title']); ?>
@@ -257,7 +283,14 @@ require_once '../includes/header.php';
             </div>
             <div class="col-md-3">
                 <strong>Room:</strong><br>
-                <?php echo sanitizeInput($selected_section['room']); ?>
+                <?php if (!empty($selected_section['room'])): ?>
+                    <?php echo sanitizeInput($selected_section['room']); ?>
+                    <?php if (!empty($selected_section['building'])): ?>
+                        <br><small class="text-muted"><?php echo sanitizeInput($selected_section['building']); ?></small>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <span class="text-muted">Not assigned</span>
+                <?php endif; ?>
             </div>
         </div>
     </div>

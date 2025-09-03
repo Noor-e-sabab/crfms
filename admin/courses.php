@@ -2,11 +2,20 @@
 require_once '../includes/config.php';
 require_once '../includes/db_connection.php';
 require_once '../includes/functions.php';
+require_once '../includes/admin_dependencies.php';
 
 checkUserType('admin');
 
 $message = '';
 $error_message = '';
+
+// Check dependencies
+$dependencies = checkPageSpecificDependencies($db, 'courses');
+$can_add_courses = hasRequiredDependencies($db, 'courses');
+
+// DEBUG: Let's see what's happening
+error_log("DEBUG: can_add_courses = " . ($can_add_courses ? 'true' : 'false'));
+error_log("DEBUG: dependencies count = " . count($dependencies));
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -16,24 +25,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'];
         
         if ($action === 'add') {
-            $course_id = strtoupper(sanitizeInput($_POST['course_id']));
-            $title = sanitizeInput($_POST['title']);
-            $credits = (int)$_POST['credits'];
-            $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
-            $description = sanitizeInput($_POST['description']);
-            $prerequisites = isset($_POST['prerequisites']) ? $_POST['prerequisites'] : [];
+            // Check dependencies before processing
+            if (!$can_add_courses) {
+                $error_message = 'Cannot add courses. Please complete the required setup first (departments are needed).';
+            } else {
+                $course_id = strtoupper(sanitizeInput($_POST['course_id']));
+                $title = sanitizeInput($_POST['title']);
+                $theory_credits = (float)$_POST['theory_credits'];
+                $lab_credits = (float)$_POST['lab_credits'];
+                $has_lab = isset($_POST['has_lab']) ? 1 : 0;
+                $program_id = !empty($_POST['program_id']) ? (int)$_POST['program_id'] : null;
+                $description = sanitizeInput($_POST['description']);
+                $prerequisites = isset($_POST['prerequisites']) ? $_POST['prerequisites'] : [];
+                
+                // Auto-detect department from course_id
+                $department_id = null;
+                if (preg_match('/^([A-Z]+)/', $course_id, $matches)) {
+                    $dept_code = $matches[1];
+                    $dept_query = "SELECT department_id FROM departments WHERE short_name = ?";
+                    $dept_stmt = $db->prepare($dept_query);
+                    $dept_stmt->bind_param('s', $dept_code);
+                    $dept_stmt->execute();
+                $dept_result = $dept_stmt->get_result();
+                if ($dept_result->num_rows > 0) {
+                    $department_id = $dept_result->fetch_assoc()['department_id'];
+                }
+            }
             
-            if (empty($course_id) || empty($title) || $credits <= 0) {
-                $error_message = 'Course ID, title, and credits are required.';
+            if (empty($course_id) || empty($title) || $theory_credits <= 0) {
+                $error_message = 'Course ID, title, and theory credits are required.';
+            } elseif (!$department_id) {
+                $error_message = 'Could not auto-detect department from course ID. Please ensure department short name matches course prefix.';
             } else {
                 // Start transaction
                 $db->getConnection()->autocommit(false);
                 
                 try {
                     // Insert course
-                    $query = "INSERT INTO courses (course_id, title, credits, department_id, description) VALUES (?, ?, ?, ?, ?)";
+                    $query = "INSERT INTO courses (course_id, title, theory_credits, lab_credits, has_lab, department_id, program_id, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
                     $stmt = $db->prepare($query);
-                    $stmt->bind_param('ssiis', $course_id, $title, $credits, $department_id, $description);
+                    $stmt->bind_param('ssddiiis', $course_id, $title, $theory_credits, $lab_credits, $has_lab, $department_id, $program_id, $description);
                     
                     if (!$stmt->execute()) {
                         throw new Exception('Failed to add course');
@@ -66,25 +97,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $db->getConnection()->autocommit(true);
             }
+            }
         } elseif ($action === 'edit') {
             $course_id = $_POST['course_id'];
             $title = sanitizeInput($_POST['title']);
-            $credits = (int)$_POST['credits'];
+            $theory_credits = (float)$_POST['theory_credits'];
+            $lab_credits = (float)$_POST['lab_credits'];
+            $has_lab = isset($_POST['has_lab']) ? 1 : 0;
             $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
+            $program_id = !empty($_POST['program_id']) ? (int)$_POST['program_id'] : null;
             $description = sanitizeInput($_POST['description']);
             $prerequisites = isset($_POST['prerequisites']) ? $_POST['prerequisites'] : [];
             
-            if (empty($title) || $credits <= 0) {
-                $error_message = 'Title and credits are required.';
+            if (empty($title) || ($theory_credits + $lab_credits) <= 0) {
+                $error_message = 'Title and valid credit hours are required.';
             } else {
+                // Calculate total credits
+                $total_credits = $theory_credits + $lab_credits;
+                
                 // Start transaction
                 $db->getConnection()->autocommit(false);
                 
                 try {
                     // Update course
-                    $query = "UPDATE courses SET title = ?, credits = ?, department_id = ?, description = ? WHERE course_id = ?";
+                    $query = "UPDATE courses SET title = ?, theory_credits = ?, lab_credits = ?, total_credits = ?, 
+                              has_lab = ?, department_id = ?, program_id = ?, description = ? WHERE course_id = ?";
                     $stmt = $db->prepare($query);
-                    $stmt->bind_param('siiss', $title, $credits, $department_id, $description, $course_id);
+                    $stmt->bind_param('sdddiiiis', $title, $theory_credits, $lab_credits, $total_credits, 
+                                     $has_lab, $department_id, $program_id, $description, $course_id);
                     
                     if (!$stmt->execute()) {
                         throw new Exception('Failed to update course');
@@ -165,12 +205,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get all courses with department info and prerequisites
-$query = "SELECT c.*, d.name as department_name,
+// Get all courses with department info, program info, and prerequisites
+$query = "SELECT c.*, d.name as department_name, 
+          pr.program_name, pr.program_code, pr.short_code as program_short_code,
           (SELECT COUNT(*) FROM sections WHERE course_id = c.course_id) as section_count,
           GROUP_CONCAT(DISTINCT p.prerequisite_course_id) as prerequisites
           FROM courses c 
           LEFT JOIN departments d ON c.department_id = d.department_id
+          LEFT JOIN programs pr ON c.program_id = pr.program_id
           LEFT JOIN prerequisites p ON c.course_id = p.course_id
           GROUP BY c.course_id
           ORDER BY c.course_id";
@@ -179,6 +221,12 @@ $courses = $db->query($query);
 // Get all departments for dropdown
 $departments_query = "SELECT * FROM departments ORDER BY name";
 $departments = $db->query($departments_query);
+
+// Get all programs for dropdown
+$programs_query = "SELECT p.*, d.name as department_name FROM programs p 
+                   LEFT JOIN departments d ON p.department_id = d.department_id 
+                   ORDER BY d.name, p.program_name";
+$programs = $db->query($programs_query);
 
 // Get all courses for prerequisites dropdown
 $all_courses_query = "SELECT course_id, title FROM courses ORDER BY course_id";
@@ -191,29 +239,39 @@ require_once '../includes/header.php';
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Manage Courses</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
+        <?php if ($can_add_courses): ?>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCourseModal">
             <i class="fas fa-plus me-2"></i>Add Course
         </button>
+        <?php endif; ?>
     </div>
 </div>
 
-<?php if (!empty($message)): ?>
-    <div class="alert alert-success alert-dismissible fade show">
-        <i class="fas fa-check-circle me-2"></i>
-        <?php echo $message; ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
+<?php if ($can_add_courses): ?>
+    <!-- Main Course Management Interface -->
+    <?php if (!empty($message)): ?>
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="fas fa-check-circle me-2"></i>
+            <?php echo $message; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!empty($error_message)): ?>
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <?php echo $error_message; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <div class="card">
+<?php else: ?>
+    <!-- Setup Guide - Show when dependencies not satisfied -->
+    <?php echo renderDependencyWarnings($dependencies); ?>
 <?php endif; ?>
 
-<?php if (!empty($error_message)): ?>
-    <div class="alert alert-danger alert-dismissible fade show">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <?php echo $error_message; ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-<?php endif; ?>
-
-<div class="card">
+<?php if ($can_add_courses): ?>
     <div class="card-body">
         <?php if ($courses->num_rows > 0): ?>
             <div class="table-responsive">
@@ -222,8 +280,11 @@ require_once '../includes/header.php';
                         <tr>
                             <th>Course ID</th>
                             <th>Title</th>
-                            <th>Credits</th>
+                            <th>Theory Credits</th>
+                            <th>Lab Credits</th>
+                            <th>Total Credits</th>
                             <th>Department</th>
+                            <th>Program</th>
                             <th>Prerequisites</th>
                             <th>Sections</th>
                             <th>Actions</th>
@@ -234,8 +295,19 @@ require_once '../includes/header.php';
                         <tr>
                             <td><strong><?php echo sanitizeInput($course['course_id']); ?></strong></td>
                             <td><?php echo sanitizeInput($course['title']); ?></td>
-                            <td><?php echo $course['credits']; ?></td>
+                            <td><?php echo $course['theory_credits']; ?></td>
+                            <td><?php echo $course['lab_credits'] > 0 ? $course['lab_credits'] : '-'; ?></td>
+                            <td><strong><?php echo $course['total_credits']; ?></strong></td>
                             <td><?php echo $course['department_name'] ?? '<em>Not assigned</em>'; ?></td>
+                            <td>
+                                <?php if (!empty($course['program_name'])): ?>
+                                    <span class="badge bg-secondary">
+                                        <?php echo !empty($course['program_short_code']) ? sanitizeInput($course['program_short_code']) : sanitizeInput($course['program_name']); ?>
+                                    </span>
+                                <?php else: ?>
+                                    <small class="text-muted">No program</small>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <?php if (!empty($course['prerequisites'])): ?>
                                     <small class="text-muted"><?php echo sanitizeInput($course['prerequisites']); ?></small>
@@ -277,9 +349,11 @@ require_once '../includes/header.php';
                 <i class="fas fa-book fa-3x text-muted mb-3"></i>
                 <h5 class="text-muted">No courses found</h5>
                 <p class="text-muted">Start by adding your first course.</p>
+                <?php if ($can_add_courses): ?>
                 <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCourseModal">
                     <i class="fas fa-plus me-2"></i>Add Course
                 </button>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
     </div>
@@ -311,41 +385,93 @@ require_once '../includes/header.php';
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="credits" class="form-label">Credits</label>
-                                <input type="number" class="form-control" id="credits" name="credits" 
-                                       min="1" max="6" required>
+                                <label for="title" class="form-label">Course Title</label>
+                                <input type="text" class="form-control" id="title" name="title" required>
                                 <div class="invalid-feedback">
-                                    Please enter credit hours (1-6).
+                                    Please enter a course title.
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="title" class="form-label">Course Title</label>
-                        <input type="text" class="form-control" id="title" name="title" required>
-                        <div class="invalid-feedback">
-                            Please enter a course title.
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="theory_credits" class="form-label">Theory Credits</label>
+                                <input type="number" class="form-control" id="theory_credits" name="theory_credits" 
+                                       min="0" max="6" step="0.5" required>
+                                <div class="invalid-feedback">
+                                    Please enter theory credits.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="lab_credits" class="form-label">Lab Credits</label>
+                                <input type="number" class="form-control" id="lab_credits" name="lab_credits" 
+                                       min="0" max="6" step="0.5" value="0">
+                                <div class="form-text">Leave 0 if no lab component.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Has Lab Component?</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="has_lab" name="has_lab" value="1">
+                                    <label class="form-check-label" for="has_lab">
+                                        This course has lab sessions
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="department_id" class="form-label">Department</label>
+                                <select class="form-select" id="department_id" name="department_id">
+                                    <option value="">Auto-detect from Course ID</option>
+                                    <?php 
+                                    $departments->data_seek(0);
+                                    while ($dept = $departments->fetch_assoc()): 
+                                    ?>
+                                        <option value="<?php echo $dept['department_id']; ?>">
+                                            <?php echo sanitizeInput($dept['name']); ?>
+                                        </option>
+                                    <?php endwhile; ?>
+                                </select>
+                                <div class="form-text">Department will be auto-detected from course prefix if not selected.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="program_id" class="form-label">Program <small class="text-muted">(Optional)</small></label>
+                                <select class="form-select" id="program_id" name="program_id">
+                                    <option value="">No specific program</option>
+                                    <?php 
+                                    $programs->data_seek(0);
+                                    while ($prog = $programs->fetch_assoc()): 
+                                    ?>
+                                        <option value="<?php echo $prog['program_id']; ?>">
+                                            <?php echo sanitizeInput($prog['department_name'] . ' - ' . $prog['program_name']); ?>
+                                            <?php if (!empty($prog['short_code'])): ?>
+                                                (<?php echo sanitizeInput($prog['short_code']); ?>)
+                                            <?php endif; ?>
+                                        </option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="department_id" class="form-label">Department</label>
-                        <select class="form-select" id="department_id" name="department_id">
-                            <option value="">Select Department</option>
-                            <?php 
-                            $departments->data_seek(0);
-                            while ($dept = $departments->fetch_assoc()): 
-                            ?>
-                                <option value="<?php echo $dept['department_id']; ?>">
-                                    <?php echo sanitizeInput($dept['name']); ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
+                        <label for="description" class="form-label">Description <small class="text-muted">(Optional)</small></label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="prerequisites" class="form-label">Prerequisites</label>
+                        <label for="prerequisites" class="form-label">Prerequisites <small class="text-muted">(Optional)</small></label>
                         <select class="form-select" id="prerequisites" name="prerequisites[]" multiple>
                             <?php 
                             $all_courses->data_seek(0);
@@ -356,14 +482,7 @@ require_once '../includes/header.php';
                                 </option>
                             <?php endwhile; ?>
                         </select>
-                        <div class="form-text">
-                            Hold Ctrl/Cmd to select multiple prerequisites.
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="description" class="form-label">Description</label>
-                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                        <div class="form-text">Hold Ctrl/Cmd to select multiple prerequisites.</div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -398,37 +517,83 @@ require_once '../includes/header.php';
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="edit_credits" class="form-label">Credits</label>
-                                <input type="number" class="form-control" id="edit_credits" name="credits" 
-                                       min="1" max="6" required>
+                                <label for="edit_title" class="form-label">Course Title</label>
+                                <input type="text" class="form-control" id="edit_title" name="title" required>
                                 <div class="invalid-feedback">
-                                    Please enter credit hours (1-6).
+                                    Please enter a course title.
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="edit_title" class="form-label">Course Title</label>
-                        <input type="text" class="form-control" id="edit_title" name="title" required>
-                        <div class="invalid-feedback">
-                            Please enter a course title.
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="edit_theory_credits" class="form-label">Theory Credits</label>
+                                <input type="number" class="form-control" id="edit_theory_credits" name="theory_credits" 
+                                       min="0" max="6" step="0.5" required>
+                                <div class="invalid-feedback">
+                                    Please enter theory credits.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="edit_lab_credits" class="form-label">Lab Credits</label>
+                                <input type="number" class="form-control" id="edit_lab_credits" name="lab_credits" 
+                                       min="0" max="6" step="0.5" value="0">
+                                <div class="form-text">Leave 0 if no lab component.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Has Lab Component?</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="edit_has_lab" name="has_lab" value="1">
+                                    <label class="form-check-label" for="edit_has_lab">
+                                        This course has lab sessions
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="edit_department_id" class="form-label">Department</label>
-                        <select class="form-select" id="edit_department_id" name="department_id">
-                            <option value="">Select Department</option>
-                            <?php 
-                            $departments->data_seek(0);
-                            while ($dept = $departments->fetch_assoc()): 
-                            ?>
-                                <option value="<?php echo $dept['department_id']; ?>">
-                                    <?php echo sanitizeInput($dept['name']); ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="edit_department_id" class="form-label">Department</label>
+                                <select class="form-select" id="edit_department_id" name="department_id">
+                                    <option value="">Select Department</option>
+                                    <?php 
+                                    $departments->data_seek(0);
+                                    while ($dept = $departments->fetch_assoc()): 
+                                    ?>
+                                        <option value="<?php echo $dept['department_id']; ?>">
+                                            <?php echo sanitizeInput($dept['name']); ?>
+                                        </option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="edit_program_id" class="form-label">Program <small class="text-muted">(Optional)</small></label>
+                                <select class="form-select" id="edit_program_id" name="program_id">
+                                    <option value="">No specific program</option>
+                                    <?php 
+                                    $programs->data_seek(0);
+                                    while ($prog = $programs->fetch_assoc()): 
+                                    ?>
+                                        <option value="<?php echo $prog['program_id']; ?>">
+                                            <?php echo sanitizeInput($prog['department_name'] . ' - ' . $prog['program_name']); ?>
+                                            <?php if (!empty($prog['short_code'])): ?>
+                                                (<?php echo sanitizeInput($prog['short_code']); ?>)
+                                            <?php endif; ?>
+                                        </option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -455,17 +620,64 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<?php endif; ?>
+
 <script>
+// Auto-check "Has Lab" when lab credits are entered
+document.addEventListener('DOMContentLoaded', function() {
+    const labCreditsInput = document.getElementById('lab_credits');
+    const hasLabCheckbox = document.getElementById('has_lab');
+    const editLabCreditsInput = document.getElementById('edit_lab_credits');
+    const editHasLabCheckbox = document.getElementById('edit_has_lab');
+    
+    // Add Course modal
+    if (labCreditsInput && hasLabCheckbox) {
+        labCreditsInput.addEventListener('input', function() {
+            if (parseFloat(this.value) > 0) {
+                hasLabCheckbox.checked = true;
+            } else {
+                hasLabCheckbox.checked = false;
+            }
+        });
+        
+        hasLabCheckbox.addEventListener('change', function() {
+            if (!this.checked) {
+                labCreditsInput.value = '0';
+            }
+        });
+    }
+    
+    // Edit Course modal
+    if (editLabCreditsInput && editHasLabCheckbox) {
+        editLabCreditsInput.addEventListener('input', function() {
+            if (parseFloat(this.value) > 0) {
+                editHasLabCheckbox.checked = true;
+            } else {
+                editHasLabCheckbox.checked = false;
+            }
+        });
+        
+        editHasLabCheckbox.addEventListener('change', function() {
+            if (!this.checked) {
+                editLabCreditsInput.value = '0';
+            }
+        });
+    }
+});
+
 function editCourse(courseId) {
-    // Fetch course details via AJAX or use data attributes
+    // Fetch course details via AJAX
     fetch(`get_course_details.php?course_id=${courseId}`)
         .then(response => response.json())
         .then(data => {
             document.getElementById('edit_course_id').value = data.course_id;
             document.getElementById('edit_course_id_display').value = data.course_id;
             document.getElementById('edit_title').value = data.title;
-            document.getElementById('edit_credits').value = data.credits;
+            document.getElementById('edit_theory_credits').value = data.theory_credits;
+            document.getElementById('edit_lab_credits').value = data.lab_credits || 0;
+            document.getElementById('edit_has_lab').checked = data.has_lab == 1;
             document.getElementById('edit_department_id').value = data.department_id || '';
+            document.getElementById('edit_program_id').value = data.program_id || '';
             document.getElementById('edit_description').value = data.description || '';
             
             // Populate prerequisites dropdown

@@ -113,9 +113,21 @@
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'programs.php' ? 'active' : ''; ?>" 
+                                   href="<?php echo BASE_URL; ?>admin/programs.php">
+                                    <i class="fas fa-graduation-cap me-2"></i>Programs
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'courses.php' ? 'active' : ''; ?>" 
                                    href="<?php echo BASE_URL; ?>admin/courses.php">
                                     <i class="fas fa-book me-2"></i>Courses
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'rooms.php' ? 'active' : ''; ?>" 
+                                   href="<?php echo BASE_URL; ?>admin/rooms.php">
+                                    <i class="fas fa-door-open me-2"></i>Rooms
                                 </a>
                             </li>
                             <li class="nav-item">

@@ -48,10 +48,11 @@ if ($system_configured) {
 }
 
 // Get recent sections
-$query = "SELECT sec.*, c.title, c.course_id,
+$query = "SELECT sec.*, c.title, c.course_id, r.room_number as room, r.building,
           (SELECT COUNT(*) FROM registration WHERE section_id = sec.section_id AND status = 'registered') as enrolled
           FROM sections sec 
           JOIN courses c ON sec.course_id = c.course_id
+          LEFT JOIN rooms r ON sec.room_id = r.room_id
           WHERE sec.faculty_id = ?
           ORDER BY sec.year DESC, sec.semester DESC, sec.section_id DESC LIMIT 5";
 $stmt = $db->prepare($query);
@@ -237,7 +238,16 @@ require_once '../includes/header.php';
                                             <?php echo formatSchedule($section['schedule_days'], $section['schedule_time']); ?>
                                         </span>
                                     </td>
-                                    <td><?php echo sanitizeInput($section['room']); ?></td>
+                                    <td>
+                                        <?php if (!empty($section['room'])): ?>
+                                            <?php echo sanitizeInput($section['room']); ?>
+                                            <?php if (!empty($section['building'])): ?>
+                                                <small class="text-muted d-block"><?php echo sanitizeInput($section['building']); ?></small>
+                                            <?php endif; ?>
+                                        <?php else: ?>
+                                            <span class="text-muted">Not assigned</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <span class="badge bg-primary">
                                             <?php echo $section['enrolled'] . '/' . $section['capacity']; ?>

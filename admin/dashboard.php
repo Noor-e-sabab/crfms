@@ -2,6 +2,7 @@
 require_once '../includes/config.php';
 require_once '../includes/db_connection.php';
 require_once '../includes/functions.php';
+require_once '../includes/admin_dependencies.php';
 
 checkUserType('admin');
 
@@ -71,22 +72,153 @@ require_once '../includes/header.php';
     <?php endif; ?>
 </div>
 
-<?php if (!$system_configured): ?>
-<div class="alert alert-danger alert-custom alert-permanent">
-    <i class="fas fa-exclamation-triangle me-2"></i>
-    <strong>System Setup Required:</strong> Please configure the system first.
-    <div class="mt-2">
-        <strong>Quick Setup Steps:</strong>
-        <ol class="mb-0 mt-1">
-            <li>Go to <a href="config.php" class="alert-link">System Config</a> and set current semester/year</li>
-            <li>Add departments in <a href="departments.php" class="alert-link">Departments</a></li>
-            <li>Add courses in <a href="courses.php" class="alert-link">Courses</a></li>
-            <li>Add faculty and students</li>
-            <li>Create course sections for the semester</li>
-        </ol>
+<!-- System Setup Progress -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>System Setup Progress</h5>
+                <?php if (!$system_configured): ?>
+                <a href="config.php" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-cog me-1"></i>System Config
+                </a>
+                <?php endif; ?>
+            </div>
+            <div class="card-body">
+                <?php
+                // Get setup progress
+                $setup_items = [
+                    'system_config' => [
+                        'name' => 'System Config',
+                        'count' => $system_configured ? 1 : 0,
+                        'required' => true,
+                        'url' => 'config.php',
+                        'icon' => 'fas fa-cog'
+                    ],
+                    'departments' => [
+                        'name' => 'Departments',
+                        'count' => $stats['departments'],
+                        'required' => true,
+                        'url' => 'departments.php',
+                        'icon' => 'fas fa-building'
+                    ],
+                    'programs' => [
+                        'name' => 'Programs',
+                        'count' => 0,
+                        'required' => false,
+                        'url' => 'programs.php',
+                        'icon' => 'fas fa-graduation-cap',
+                        'depends_on' => 'departments'
+                    ],
+                    'rooms' => [
+                        'name' => 'Rooms',
+                        'count' => 0,
+                        'required' => false,
+                        'url' => 'rooms.php',
+                        'icon' => 'fas fa-door-open'
+                    ],
+                    'faculty' => [
+                        'name' => 'Faculty',
+                        'count' => $stats['faculty'],
+                        'required' => true,
+                        'url' => 'faculty.php',
+                        'icon' => 'fas fa-chalkboard-teacher',
+                        'depends_on' => 'departments'
+                    ],
+                    'courses' => [
+                        'name' => 'Courses',
+                        'count' => $stats['courses'],
+                        'required' => true,
+                        'url' => 'courses.php',
+                        'icon' => 'fas fa-book',
+                        'depends_on' => 'departments'
+                    ],
+                    'students' => [
+                        'name' => 'Students',
+                        'count' => $stats['students'],
+                        'required' => true,
+                        'url' => 'students.php',
+                        'icon' => 'fas fa-user-graduate',
+                        'depends_on' => 'departments'
+                    ],
+                    'sections' => [
+                        'name' => 'Sections',
+                        'count' => $stats['sections'],
+                        'required' => true,
+                        'url' => 'sections.php',
+                        'icon' => 'fas fa-users',
+                        'depends_on' => ['courses', 'faculty', 'rooms']
+                    ]
+                ];
+                
+                // Get additional counts
+                $programs_count = $db->query("SELECT COUNT(*) as count FROM programs")->fetch_assoc()['count'];
+                $rooms_count = $db->query("SELECT COUNT(*) as count FROM rooms")->fetch_assoc()['count'];
+                $setup_items['programs']['count'] = $programs_count;
+                $setup_items['rooms']['count'] = $rooms_count;
+                
+                $total_required = 0;
+                $completed_required = 0;
+                ?>
+                
+                <div class="row">
+                    <?php foreach ($setup_items as $key => $item): 
+                        $is_complete = $item['count'] > 0;
+                        $has_dependencies = isset($item['depends_on']);
+                        $dependencies_met = true;
+                        
+                        if ($has_dependencies) {
+                            $deps = is_array($item['depends_on']) ? $item['depends_on'] : [$item['depends_on']];
+                            foreach ($deps as $dep) {
+                                if ($setup_items[$dep]['count'] == 0) {
+                                    $dependencies_met = false;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if ($item['required']) {
+                            $total_required++;
+                            if ($is_complete) $completed_required++;
+                        }
+                        
+                        $status_class = $is_complete ? 'text-success' : ($dependencies_met ? 'text-warning' : 'text-muted');
+                        $icon_class = $is_complete ? 'fas fa-check-circle text-success' : ($dependencies_met ? 'fas fa-exclamation-circle text-warning' : 'fas fa-times-circle text-muted');
+                    ?>
+                    <div class="col-xl-3 col-lg-4 col-md-6 mb-3">
+                        <div class="d-flex align-items-center p-2 border rounded">
+                            <div class="me-3">
+                                <i class="<?php echo $item['icon']; ?> fa-2x <?php echo $status_class; ?>"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1"><?php echo $item['name']; ?></h6>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="badge bg-secondary"><?php echo $item['count']; ?> items</span>
+                                    <i class="<?php echo $icon_class; ?>"></i>
+                                </div>
+                                <?php if (!$dependencies_met): ?>
+                                    <small class="text-muted">Requires: <?php echo is_array($item['depends_on']) ? implode(', ', $item['depends_on']) : $item['depends_on']; ?></small>
+                                <?php elseif (!$is_complete): ?>
+                                    <a href="<?php echo $item['url']; ?>" class="btn btn-sm btn-outline-primary mt-1">Setup Now</a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                
+                <div class="mt-3">
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: <?php echo $total_required > 0 ? ($completed_required / $total_required) * 100 : 0; ?>%" 
+                             aria-valuenow="<?php echo $completed_required; ?>" aria-valuemin="0" aria-valuemax="<?php echo $total_required; ?>">
+                            <?php echo $completed_required; ?>/<?php echo $total_required; ?> Required Components
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
-<?php endif; ?>
 
 <!-- Statistics Cards -->
 <div class="row mb-4">

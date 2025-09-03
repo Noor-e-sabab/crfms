@@ -16,8 +16,10 @@ if (!$current_semester_info['current_semester'] || !$current_semester_info['curr
 }
 
 // Get student information
-$query = "SELECT s.*, d.name as department_name FROM students s 
+$query = "SELECT s.*, d.name as department_name, p.program_name, p.program_code, p.short_code as program_short_code 
+          FROM students s 
           LEFT JOIN departments d ON s.department_id = d.department_id 
+          LEFT JOIN programs p ON s.program_id = p.program_id
           WHERE s.student_id = ?";
 $stmt = $db->prepare($query);
 $stmt->bind_param('i', $student_id);
@@ -29,38 +31,40 @@ $current_registrations = 0;
 $total_credits = 0;
 
 if ($system_configured) {
+    // Count only theory sections to avoid double counting theory+lab pairs
     $query = "SELECT COUNT(*) as count FROM registration r 
               JOIN sections sec ON r.section_id = sec.section_id 
               WHERE r.student_id = ? AND r.status = 'registered' 
-              AND sec.semester = ? AND sec.year = ?";
+              AND sec.semester = ? AND sec.year = ? AND sec.section_type = 'theory'";
     $stmt = $db->prepare($query);
     $stmt->bind_param('isi', $student_id, $current_semester_info['current_semester'], $current_semester_info['current_year']);
     $stmt->execute();
     $current_registrations = $stmt->get_result()->fetch_assoc()['count'];
 
-    // Get total credits for current semester
-    $query = "SELECT SUM(c.credits) as total_credits FROM registration r 
-              JOIN sections sec ON r.section_id = sec.section_id 
-              JOIN courses c ON sec.course_id = c.course_id
-              WHERE r.student_id = ? AND r.status = 'registered' 
-              AND sec.semester = ? AND sec.year = ?";
-    $stmt = $db->prepare($query);
-    $stmt->bind_param('isi', $student_id, $current_semester_info['current_semester'], $current_semester_info['current_year']);
-    $stmt->execute();
-    $total_credits = $stmt->get_result()->fetch_assoc()['total_credits'] ?? 0;
+    // Get correct total credits using new calculation method
+    $total_credits = calculateStudentCredits($db, $student_id, $current_semester_info['current_semester'], $current_semester_info['current_year']);
 }
 
-// Get recent registrations
-$query = "SELECT c.course_id, c.title, sec.schedule_days, sec.schedule_time, 
-          f.name as faculty_name, r.registration_date
+// Get recent registrations - show theory sections with lab info
+$query = "SELECT c.course_id, c.title, c.has_lab, sec.schedule_days, sec.schedule_time, 
+          sec.section_number, sec.section_type, f.name as faculty_name, r.registration_date,
+          -- For theory sections, get paired lab info
+          (CASE WHEN sec.section_type = 'theory' THEN
+            (SELECT CONCAT(lab_sec.section_number, ' (', lab_sec.schedule_days, ' ', lab_sec.schedule_time, ')')
+             FROM registration r2 
+             JOIN sections lab_sec ON r2.section_id = lab_sec.section_id 
+             WHERE r2.student_id = ? AND r2.status = 'registered' 
+             AND lab_sec.parent_section_id = sec.section_id AND lab_sec.section_type = 'lab'
+             LIMIT 1)
+           ELSE NULL END) as lab_info
           FROM registration r 
           JOIN sections sec ON r.section_id = sec.section_id 
           JOIN courses c ON sec.course_id = c.course_id
           JOIN faculty f ON sec.faculty_id = f.faculty_id
-          WHERE r.student_id = ? AND r.status = 'registered'
+          WHERE r.student_id = ? AND r.status = 'registered' AND sec.section_type = 'theory'
           ORDER BY r.registration_date DESC LIMIT 5";
 $stmt = $db->prepare($query);
-$stmt->bind_param('i', $student_id);
+$stmt->bind_param('ii', $student_id, $student_id);
 $stmt->execute();
 $recent_registrations = $stmt->get_result();
 
@@ -104,7 +108,7 @@ require_once '../includes/header.php';
                     <i class="fas fa-user me-2"></i>Student Information
                 </h5>
                 <div class="row">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <strong>Name:</strong><br>
                         <?php echo sanitizeInput($student_info['name']); ?>
                     </div>
@@ -112,13 +116,23 @@ require_once '../includes/header.php';
                         <strong>Email:</strong><br>
                         <?php echo sanitizeInput($student_info['email']); ?>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <strong>Department:</strong><br>
                         <?php echo $student_info['department_name'] ?? 'Not assigned'; ?>
                     </div>
+                    <div class="col-md-2">
+                        <strong>Program:</strong><br>
+                        <?php if (!empty($student_info['program_name'])): ?>
+                            <span class="badge bg-secondary">
+                                <?php echo !empty($student_info['program_short_code']) ? sanitizeInput($student_info['program_short_code']) : sanitizeInput($student_info['program_name']); ?>
+                            </span>
+                        <?php else: ?>
+                            <small class="text-muted">No program</small>
+                        <?php endif; ?>
+                    </div>
                     <div class="col-md-3">
-                        <strong>Admission Year:</strong><br>
-                        <?php echo $student_info['admission_year']; ?>
+                        <strong>Admission:</strong><br>
+                        <?php echo $student_info['admission_semester'] . ' ' . $student_info['admission_year']; ?>
                     </div>
                 </div>
             </div>
@@ -265,6 +279,7 @@ require_once '../includes/header.php';
                             <thead>
                                 <tr>
                                     <th>Course</th>
+                                    <th>Section</th>
                                     <th>Title</th>
                                     <th>Schedule</th>
                                     <th>Faculty</th>
@@ -275,7 +290,26 @@ require_once '../includes/header.php';
                                 <?php while ($registration = $recent_registrations->fetch_assoc()): ?>
                                 <tr>
                                     <td><strong><?php echo sanitizeInput($registration['course_id']); ?></strong></td>
-                                    <td><?php echo sanitizeInput($registration['title']); ?></td>
+                                    <td>
+                                        <span class="badge bg-primary">
+                                            <?php echo sanitizeInput($registration['section_number'] ?? 'N/A'); ?>
+                                        </span>
+                                        <?php if ($registration['has_lab'] && $registration['lab_info']): ?>
+                                            <span class="badge bg-info ms-1">+ Lab</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php echo sanitizeInput($registration['title']); ?>
+                                        <?php if ($registration['has_lab']): ?>
+                                            <small class="text-muted d-block">
+                                                <?php if ($registration['lab_info']): ?>
+                                                    Lab: <?php echo sanitizeInput($registration['lab_info']); ?>
+                                                <?php else: ?>
+                                                    Has lab component
+                                                <?php endif; ?>
+                                            </small>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <span class="schedule-time">
                                             <?php echo formatSchedule($registration['schedule_days'], $registration['schedule_time']); ?>

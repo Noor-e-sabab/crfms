@@ -17,19 +17,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($action === 'add') {
             $name = sanitizeInput($_POST['name']);
+            $short_name = sanitizeInput($_POST['short_name']);
             
-            if (empty($name)) {
-                $error_message = 'Department name is required.';
+            if (empty($name) || empty($short_name)) {
+                $error_message = 'Department name and short name are required.';
             } else {
-                $query = "INSERT INTO departments (name) VALUES (?)";
+                $query = "INSERT INTO departments (name, short_name) VALUES (?, ?)";
                 $stmt = $db->prepare($query);
-                $stmt->bind_param('s', $name);
+                $stmt->bind_param('ss', $name, $short_name);
                 
                 if ($stmt->execute()) {
                     $message = 'Department added successfully!';
                 } else {
                     if ($stmt->errno === 1062) {
-                        $error_message = 'Department name already exists.';
+                        $error_message = 'Department name or short name already exists.';
                     } else {
                         $error_message = 'Failed to add department. Please try again.';
                     }
@@ -38,19 +39,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'edit') {
             $department_id = (int)$_POST['department_id'];
             $name = sanitizeInput($_POST['name']);
+            $short_name = sanitizeInput($_POST['short_name']);
             
-            if (empty($name)) {
-                $error_message = 'Department name is required.';
+            if (empty($name) || empty($short_name)) {
+                $error_message = 'Department name and short name are required.';
             } else {
-                $query = "UPDATE departments SET name = ? WHERE department_id = ?";
+                $query = "UPDATE departments SET name = ?, short_name = ? WHERE department_id = ?";
                 $stmt = $db->prepare($query);
-                $stmt->bind_param('si', $name, $department_id);
+                $stmt->bind_param('ssi', $name, $short_name, $department_id);
                 
                 if ($stmt->execute()) {
                     $message = 'Department updated successfully!';
                 } else {
                     if ($stmt->errno === 1062) {
-                        $error_message = 'Department name already exists.';
+                        $error_message = 'Department name or short name already exists.';
                     } else {
                         $error_message = 'Failed to update department. Please try again.';
                     }
@@ -145,6 +147,7 @@ require_once '../includes/header.php';
                         <tr>
                             <th>ID</th>
                             <th>Department Name</th>
+                            <th>Short Name</th>
                             <th>Students</th>
                             <th>Faculty</th>
                             <th>Courses</th>
@@ -157,6 +160,7 @@ require_once '../includes/header.php';
                         <tr>
                             <td><?php echo $department['department_id']; ?></td>
                             <td><strong><?php echo sanitizeInput($department['name']); ?></strong></td>
+                            <td><span class="badge bg-info"><?php echo sanitizeInput($department['short_name']); ?></span></td>
                             <td>
                                 <span class="badge bg-primary"><?php echo $department['student_count']; ?></span>
                             </td>
@@ -169,7 +173,7 @@ require_once '../includes/header.php';
                             <td><?php echo date('M j, Y', strtotime($department['created_at'])); ?></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-primary me-1" 
-                                        onclick="editDepartment(<?php echo $department['department_id']; ?>, '<?php echo addslashes($department['name']); ?>')">
+                                        onclick="editDepartment(<?php echo $department['department_id']; ?>, '<?php echo addslashes($department['name']); ?>', '<?php echo addslashes($department['short_name']); ?>')">>
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 
@@ -226,6 +230,14 @@ require_once '../includes/header.php';
                             Please enter a department name.
                         </div>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label for="short_name" class="form-label">Short Name</label>
+                        <input type="text" class="form-control" id="short_name" name="short_name" maxlength="10" required>
+                        <div class="invalid-feedback">
+                            Please enter a short name (e.g., CSE, EEE).
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -257,6 +269,14 @@ require_once '../includes/header.php';
                             Please enter a department name.
                         </div>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label for="edit_short_name" class="form-label">Short Name</label>
+                        <input type="text" class="form-control" id="edit_short_name" name="short_name" maxlength="10" required>
+                        <div class="invalid-feedback">
+                            Please enter a short name.
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -268,9 +288,10 @@ require_once '../includes/header.php';
 </div>
 
 <script>
-function editDepartment(id, name) {
+function editDepartment(id, name, shortName) {
     document.getElementById('edit_department_id').value = id;
     document.getElementById('edit_name').value = name;
+    document.getElementById('edit_short_name').value = shortName;
     new bootstrap.Modal(document.getElementById('editDepartmentModal')).show();
 }
 </script>

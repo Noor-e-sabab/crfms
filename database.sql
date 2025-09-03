@@ -16,7 +16,19 @@ CREATE TABLE config (
 CREATE TABLE departments (
     department_id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
+    short_name VARCHAR(10) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create programs table
+CREATE TABLE programs (
+    program_id INT PRIMARY KEY AUTO_INCREMENT,
+    program_name VARCHAR(100) NOT NULL,
+    program_code VARCHAR(10) NOT NULL UNIQUE,
+    short_code VARCHAR(10),
+    department_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(department_id)
 );
 
 -- Create faculty table
@@ -38,21 +50,29 @@ CREATE TABLE students (
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     department_id INT,
+    program_id INT,
     admission_year INT NOT NULL,
+    admission_semester VARCHAR(20) NOT NULL,
     status ENUM('active', 'inactive', 'graduated') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (department_id) REFERENCES departments(department_id)
+    FOREIGN KEY (department_id) REFERENCES departments(department_id),
+    FOREIGN KEY (program_id) REFERENCES programs(program_id)
 );
 
 -- Create courses table
 CREATE TABLE courses (
     course_id VARCHAR(10) PRIMARY KEY,
     title VARCHAR(200) NOT NULL,
-    credits INT NOT NULL,
+    theory_credits DECIMAL(3,1) NOT NULL,
+    lab_credits DECIMAL(3,1) DEFAULT 0,
+    total_credits DECIMAL(3,1) GENERATED ALWAYS AS (theory_credits + lab_credits) STORED,
+    has_lab BOOLEAN DEFAULT FALSE,
     department_id INT,
+    program_id INT,
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (department_id) REFERENCES departments(department_id)
+    FOREIGN KEY (department_id) REFERENCES departments(department_id),
+    FOREIGN KEY (program_id) REFERENCES programs(program_id)
 );
 
 -- Create prerequisites table
@@ -65,20 +85,36 @@ CREATE TABLE prerequisites (
     FOREIGN KEY (prerequisite_course_id) REFERENCES courses(course_id)
 );
 
+-- Create rooms table
+CREATE TABLE rooms (
+    room_id INT PRIMARY KEY AUTO_INCREMENT,
+    room_number VARCHAR(20) NOT NULL UNIQUE,
+    building VARCHAR(50),
+    capacity INT NOT NULL,
+    room_type ENUM('classroom', 'lab', 'both') DEFAULT 'classroom',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create sections table
 CREATE TABLE sections (
     section_id INT PRIMARY KEY AUTO_INCREMENT,
     course_id VARCHAR(10) NOT NULL,
+    section_number VARCHAR(10) NOT NULL, -- e.g., 'A1', 'B2', 'L1' for Lab1
     faculty_id INT NOT NULL,
     semester VARCHAR(20) NOT NULL,
     year INT NOT NULL,
+    section_type ENUM('theory', 'lab') DEFAULT 'theory',
+    parent_section_id INT NULL, -- For lab sections, references the theory section
     schedule_days VARCHAR(20) NOT NULL, -- e.g., 'MW' for Monday-Wednesday
     schedule_time VARCHAR(50) NOT NULL, -- e.g., '10:00-11:20'
-    room VARCHAR(20) NOT NULL,
+    room_id INT NOT NULL,
     capacity INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (course_id) REFERENCES courses(course_id),
-    FOREIGN KEY (faculty_id) REFERENCES faculty(faculty_id)
+    FOREIGN KEY (faculty_id) REFERENCES faculty(faculty_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(room_id),
+    FOREIGN KEY (parent_section_id) REFERENCES sections(section_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_section (course_id, section_number, semester, year)
 );
 
 -- Create registration table

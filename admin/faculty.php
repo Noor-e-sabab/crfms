@@ -2,11 +2,16 @@
 require_once '../includes/config.php';
 require_once '../includes/db_connection.php';
 require_once '../includes/functions.php';
+require_once '../includes/admin_dependencies.php';
 
 checkUserType('admin');
 
 $message = '';
 $error_message = '';
+
+// Check dependencies
+$dependencies = checkPageSpecificDependencies($db, 'faculty');
+$can_add_faculty = hasRequiredDependencies($db, 'faculty');
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -16,32 +21,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'];
         
         if ($action === 'add') {
-            $name = sanitizeInput($_POST['name']);
-            $email = sanitizeInput($_POST['email']);
-            $password = $_POST['password'];
-            $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
-            $designation = sanitizeInput($_POST['designation']);
-            
-            if (empty($name) || empty($email) || empty($password) || empty($designation)) {
-                $error_message = 'All fields are required.';
-            } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                $error_message = 'Please enter a valid email address.';
-            } elseif (strlen($password) < 6) {
-                $error_message = 'Password must be at least 6 characters long.';
+            // Check dependencies before processing
+            if (!$can_add_faculty) {
+                $error_message = 'Cannot add faculty. Please complete the required setup first (departments are needed).';
             } else {
-                $password_hash = password_hash($password, PASSWORD_DEFAULT);
+                $name = sanitizeInput($_POST['name']);
+                $email = sanitizeInput($_POST['email']);
+                $password = $_POST['password'];
+                $department_id = !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null;
+                $designation = sanitizeInput($_POST['designation']);
                 
-                $query = "INSERT INTO faculty (name, email, password_hash, department_id, designation) VALUES (?, ?, ?, ?, ?)";
-                $stmt = $db->prepare($query);
-                $stmt->bind_param('sssis', $name, $email, $password_hash, $department_id, $designation);
-                
-                if ($stmt->execute()) {
-                    $message = 'Faculty member added successfully!';
+                if (empty($name) || empty($email) || empty($password) || empty($designation)) {
+                    $error_message = 'All fields are required.';
+                } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $error_message = 'Please enter a valid email address.';
+                } elseif (strlen($password) < 6) {
+                    $error_message = 'Password must be at least 6 characters long.';
                 } else {
-                    if ($stmt->errno === 1062) {
-                        $error_message = 'Email already exists.';
+                    $password_hash = password_hash($password, PASSWORD_DEFAULT);
+                    
+                    $query = "INSERT INTO faculty (name, email, password_hash, department_id, designation) VALUES (?, ?, ?, ?, ?)";
+                    $stmt = $db->prepare($query);
+                    $stmt->bind_param('sssis', $name, $email, $password_hash, $department_id, $designation);
+                    
+                    if ($stmt->execute()) {
+                        $message = 'Faculty member added successfully!';
                     } else {
-                        $error_message = 'Failed to add faculty member. Please try again.';
+                        if ($stmt->errno === 1062) {
+                            $error_message = 'Email already exists.';
+                        } else {
+                            $error_message = 'Failed to add faculty member. Please try again.';
+                        }
                     }
                 }
             }
@@ -131,29 +141,39 @@ require_once '../includes/header.php';
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">Manage Faculty</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
+        <?php if ($can_add_faculty): ?>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addFacultyModal">
             <i class="fas fa-plus me-2"></i>Add Faculty
         </button>
+        <?php endif; ?>
     </div>
 </div>
 
-<?php if (!empty($message)): ?>
-    <div class="alert alert-success alert-dismissible fade show">
-        <i class="fas fa-check-circle me-2"></i>
-        <?php echo $message; ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
+<?php if ($can_add_faculty): ?>
+    <!-- Main Faculty Management Interface -->
+    <?php if (!empty($message)): ?>
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="fas fa-check-circle me-2"></i>
+            <?php echo $message; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!empty($error_message)): ?>
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <?php echo $error_message; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
+    <div class="card">
+<?php else: ?>
+    <!-- Setup Guide - Show when dependencies not satisfied -->
+    <?php echo renderDependencyWarnings($dependencies); ?>
 <?php endif; ?>
 
-<?php if (!empty($error_message)): ?>
-    <div class="alert alert-danger alert-dismissible fade show">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <?php echo $error_message; ?>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-<?php endif; ?>
-
-<div class="card">
+<?php if ($can_add_faculty): ?>
     <div class="card-body">
         <?php if ($faculty->num_rows > 0): ?>
             <div class="table-responsive">
@@ -358,6 +378,8 @@ require_once '../includes/header.php';
         </div>
     </div>
 </div>
+
+<?php endif; ?>
 
 <script>
 function editFaculty(id, name, email, departmentId, designation) {
