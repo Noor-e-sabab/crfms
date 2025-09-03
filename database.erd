@@ -1,1 +1,183 @@
 erdiagram Model
+
+notation=uml
+
+entity config {
+   id key
+   registration_open
+   current_semester
+   current_year
+   last_updated
+}
+
+entity departments {
+   department_id key
+   name
+   short_name
+   created_at
+}
+
+entity programs {
+   program_id key
+   program_name
+   program_code
+   short_code
+   department_id
+   created_at
+}
+
+entity faculty {
+   faculty_id key
+   name
+   email
+   password_hash
+   department_id
+   designation
+   created_at
+}
+
+entity students {
+   student_id key
+   name
+   email
+   password_hash
+   department_id
+   program_id
+   admission_year
+   admission_semester
+   status
+   created_at
+}
+
+entity courses {
+   course_id key
+   title
+   theory_credits
+   lab_credits
+   total_credits
+   has_lab
+   department_id
+   program_id
+   description
+   created_at
+}
+
+entity prerequisites {
+   id key
+   course_id
+   prerequisite_course_id
+   created_at
+}
+
+entity rooms {
+   room_id key
+   room_number
+   building
+   capacity
+   room_type
+   created_at
+}
+
+entity sections {
+   section_id key
+   course_id
+   section_number
+   faculty_id
+   semester
+   year
+   section_type
+   parent_section_id
+   schedule_days
+   schedule_time
+   room_id
+   capacity
+   created_at
+}
+
+entity registration {
+   registration_id key
+   student_id
+   section_id
+   registration_date
+   status
+}
+
+entity enrollments {
+   enrollment_id key
+   student_id
+   section_id
+   grade
+   updated_at
+}
+
+entity admins {
+   admin_id key
+   username
+   password_hash
+   email
+   created_at
+}
+
+relationship dept_programs {
+   departments -> programs
+}
+
+relationship dept_faculty {
+   departments -> faculty
+}
+
+relationship dept_students {
+   departments -> students
+}
+
+relationship dept_courses {
+   departments -> courses
+}
+
+relationship prog_students {
+   programs -> students
+}
+
+relationship prog_courses {
+   programs -> courses
+}
+
+relationship course_prerequisites {
+   courses -> prerequisites
+}
+
+relationship prerequisite_courses {
+   courses -> prerequisites
+}
+
+relationship course_sections {
+   courses -> sections
+}
+
+relationship faculty_sections {
+   faculty -> sections
+}
+
+relationship room_sections {
+   rooms -> sections
+}
+
+relationship section_parent {
+   sections -> sections
+}
+
+relationship student_registration {
+   students -> registration
+}
+
+relationship section_registration {
+   sections -> registration
+}
+
+relationship student_enrollments {
+   students -> enrollments
+}
+
+relationship section_enrollments {
+   sections -> enrollments
+}

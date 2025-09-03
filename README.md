@@ -1,60 +1,172 @@
-# EWU Course Registration and Faculty Management System (CRFMS)
+# EWU Course Registration & Faculty Management System (CRFMS) v2
 
-A complete web-based course registration and faculty management system built with PHP, MySQL, and Bootstrap 5.
+## Project Overview
+CRFMS (Course Registration and Faculty Management System) is a comprehensive web-based application designed for East West University to manage course registration, faculty assignments, and academic scheduling. The system provides role-based access for administrators, faculty members, and students with dedicated dashboards and functionalities.
 
 ## Features
 
-### Student Portal
-- View available courses for registration
-- Register/Drop courses with prerequisite checking
-- Time conflict detection
-- View current schedule and academic history
-- Grade viewing
+### 🔐 Authentication & Authorization
+- Role-based authentication system (Admin, Faculty, Student)
+- Secure session management
+- Password hashing with PHP's built-in functions
+- CSRF token protection
 
-### Faculty Portal
-- View assigned course sections
-- Manage class rosters
-- Submit and update student grades
-- View teaching load and statistics
+### 👨‍💼 Admin Features
+- **System Configuration**: Set current semester, year, and registration status
+- **Department Management**: Create and manage academic departments
+- **Program Management**: Manage degree programs linked to departments
+- **Faculty Management**: Add/edit faculty members with department assignments
+- **Student Management**: Student registration and profile management
+- **Course Management**: Create courses with theory/lab components and prerequisites
+- **Room Management**: Manage classrooms and labs with capacity tracking
+- **Section Management**: Create course sections with advanced scheduling
+- **Dashboard**: Real-time statistics and system overview
 
-### Admin Portal
-- Complete CRUD operations for:
-  - Departments
-  - Courses (with prerequisites)
-  - Students
-  - Faculty
-  - Course Sections
-  - System Administrators
-- Semester management
-- Registration control (open/close)
-- System configuration
+### 👨‍🏫 Faculty Features
+- **Personal Dashboard**: View assigned sections and student counts
+- **Section Management**: View and manage assigned course sections
+- **Student Lists**: Access enrolled student information per section
+
+### 👨‍🎓 Student Features
+- **Personal Dashboard**: Academic overview and registration status
+- **Course Registration**: Browse and register for available sections
+- **Schedule View**: Visual timetable of registered courses
+- **Credit Tracking**: Monitor total credits and course load
 
 ## Technology Stack
 
-- **Backend**: PHP 7.4+
-- **Database**: MySQL 5.7+
-- **Frontend**: HTML5, CSS3, JavaScript
-- **Framework**: Bootstrap 5.3
-- **Icons**: Font Awesome 6
-- **Server**: Apache (XAMPP)
+### Backend
+- **PHP 7.4+**: Server-side scripting
+- **MySQL/MariaDB**: Database management
+- **Session Management**: Secure user authentication
 
-## Installation & Setup
+### Frontend
+- **HTML5 & CSS3**: Structure and styling
+- **Bootstrap 5.3.0**: Responsive UI framework
+- **Font Awesome 6.0.0**: Icon library
+- **JavaScript**: Client-side interactions
+
+### Development Environment
+- **XAMPP**: Local development server
+- **Apache**: Web server
+- **phpMyAdmin**: Database administration
+
+## Project Structure
+
+```
+crfms@v2/
+├── admin/                      # Administrator interface
+│   ├── admins.php             # Admin user management
+│   ├── config.php             # System configuration
+│   ├── courses.php            # Course management
+│   ├── dashboard.php          # Admin dashboard
+│   ├── departments.php        # Department management
+│   ├── faculty.php            # Faculty management
+│   ├── get_course_details.php # AJAX course details
+│   ├── get_student_details.php # AJAX student details
+│   ├── get_theory_sections.php # AJAX theory sections
+│   ├── programs.php           # Program management
+│   ├── rooms.php              # Room management
+│   ├── sections.php           # Section management
+│   └── students.php           # Student management
+├── faculty/                   # Faculty interface
+│   ├── dashboard.php          # Faculty dashboard
+│   └── sections.php           # Faculty section management
+├── student/                   # Student interface
+│   ├── courses.php            # Course registration
+│   ├── dashboard.php          # Student dashboard
+│   └── schedule.php           # Class schedule view
+├── includes/                  # Shared components
+│   ├── admin_dependencies.php # Admin dependency checks
+│   ├── config.php             # Global configuration
+│   ├── db_connection.php      # Database connection
+│   ├── footer.php             # HTML footer
+│   ├── functions.php          # Utility functions
+│   ├── header.php             # HTML header
+│   ├── schedule_generator.php # Schedule generation utilities
+│   └── validation_helper.php  # Validation functions
+├── database.erd              # Entity Relationship Diagram
+├── database.sql              # Database schema and setup
+├── index.php                 # Application entry point
+├── login.php                 # Authentication page
+└── logout.php                # Session termination
+```
+
+## Database Schema
+
+### Core Entities
+
+#### config
+- System-wide configuration settings
+- Current semester and year tracking
+- Registration status management
+
+#### departments
+- Academic department information
+- Department codes and names
+
+#### programs
+- Degree programs linked to departments
+- Program codes and descriptions
+
+#### faculty
+- Faculty member profiles
+- Department assignments and designations
+
+#### students
+- Student profiles and academic information
+- Program enrollment and status tracking
+
+#### courses
+- Course catalog with theory/lab components
+- Credit hour management
+- Prerequisites tracking
+
+#### rooms
+- Classroom and laboratory management
+- Capacity and type specifications
+
+#### sections
+- Course section scheduling
+- Faculty assignments
+- Time/room allocations
+- Theory-lab section pairing
+
+#### registration
+- Student course registrations
+- Registration status tracking
+
+#### enrollments
+- Final enrollment records
+- Grade management
+
+#### admins
+- Administrator account management
+
+## Installation
 
 ### Prerequisites
 - XAMPP (Apache + MySQL + PHP)
-- Web browser
-- Text editor (optional)
+- PHP 7.4 or higher
+- MySQL 5.7 or higher
 
-### Step 1: Setup Database
-1. Start XAMPP Control Panel
-2. Start Apache and MySQL services
-3. Open phpMyAdmin (http://localhost/phpmyadmin)
-4. Create a new database or import the provided `database.sql` file
-5. The database will be created with all necessary tables
+### Setup Instructions
 
-### Step 2: Configure Application
-1. Extract/Copy all files to `C:\xampp\htdocs\crfms@v2\`
-2. Update database configuration in `includes/config.php` if needed:
+1. **Clone/Download the project**
+   ```bash
+   # Place the project in XAMPP htdocs folder
+   C:\xampp\htdocs\crfms@v2\
+   ```
+
+2. **Database Setup**
+   ```sql
+   # Import the database schema
+   mysql -u root -p < database.sql
+   ```
+   Or use phpMyAdmin to import `database.sql`
+
+3. **Configuration**
+   - Update database credentials in `includes/config.php`
    ```php
    define('DB_HOST', 'localhost');
    define('DB_USERNAME', 'root');
@@ -62,150 +174,123 @@ A complete web-based course registration and faculty management system built wit
    define('DB_NAME', 'ewu_registration');
    ```
 
-### Step 3: Access the System
-1. Open web browser
-2. Navigate to: `http://localhost/crfms@v2/`
-3. You'll be redirected to the login page
+4. **Start XAMPP Services**
+   - Start Apache and MySQL services
+   - Access the application at `http://localhost/crfms@v2/`
 
-## First Time Setup
+5. **Initial Setup**
+   - Create initial admin account through database
+   - Configure system settings via Admin Dashboard
 
-### Create First Admin
-Since there's no registration system, you need to manually create the first admin:
+## Key Features Explained
 
-1. Open phpMyAdmin
-2. Go to `ewu_registration` database
-3. Open `admins` table
-4. Insert a new record:
-   ```sql
-   INSERT INTO admins (username, email, password_hash) 
-   VALUES ('admin', 'admin@ewu.edu', '$2y$10$example_hash_here');
-   ```
-5. To generate password hash, use PHP:
-   ```php
-   echo password_hash('your_password', PASSWORD_DEFAULT);
-   ```
+### Smart Scheduling System
+- **Time Conflict Detection**: Prevents faculty and room double-booking
+- **Theory-Lab Pairing**: Automatic lab section linking to theory sections
+- **Schedule Generator**: Creates all possible time slot combinations
+- **Buffer Time Management**: Ensures adequate break time between classes
 
-### Initial System Configuration
-1. Login as admin
-2. Go to System Config
-3. Set current semester and year
-4. Enable/disable registration as needed
-5. Add departments, courses, faculty, and students
+### Advanced Registration Logic
+- **Prerequisite Checking**: Validates course prerequisites before registration
+- **Capacity Management**: Real-time seat availability tracking
+- **Credit Limits**: Prevents over-registration beyond credit limits
+- **Schedule Conflicts**: Detects student schedule conflicts
+
+### Security Features
+- **CSRF Protection**: All forms protected against CSRF attacks
+- **Input Sanitization**: Comprehensive input validation and sanitization
+- **Password Security**: Bcrypt password hashing
+- **Session Security**: Secure session configuration
+
+### Data Validation
+- **Business Logic Validation**: Comprehensive validation helper functions
+- **Database Constraints**: Foreign key relationships and data integrity
+- **Real-time Validation**: AJAX-powered form validation
 
 ## Usage Guide
 
 ### For Administrators
-
-#### Setting Up New Semester
-1. **System Config**: Set semester and year
-2. **Departments**: Add/manage academic departments
-3. **Courses**: Add courses with prerequisites
-4. **Faculty**: Add faculty members
-5. **Students**: Add student accounts
-6. **Sections**: Create course sections for the semester
-7. **Enable Registration**: Open registration for students
-
-#### Managing Registration
-- Use System Config to open/close registration
-- Monitor enrollment through Sections page
-- View system statistics on Dashboard
+1. **Initial Setup**: Configure system via Admin → System Config
+2. **Data Entry**: Add departments → programs → faculty → rooms → courses
+3. **Section Creation**: Create course sections with proper scheduling
+4. **Registration Control**: Open/close registration periods
+5. **Monitoring**: Use dashboard for system oversight
 
 ### For Faculty
-1. Login with faculty credentials
-2. View assigned sections in current semester
-3. Access student rosters for each section
-4. Submit grades for enrolled students
+1. **Login**: Use faculty credentials to access faculty dashboard
+2. **View Sections**: See assigned course sections and schedules
+3. **Student Management**: Access enrolled student lists
 
 ### For Students
-1. Login with student credentials
-2. Browse available courses
-3. Register for courses (when registration is open)
-4. View current schedule and academic history
-5. Check grades as they become available
+1. **Login**: Use student credentials to access student dashboard
+2. **Browse Courses**: View available sections during registration period
+3. **Register**: Add courses to schedule with real-time validation
+4. **Schedule View**: Visual timetable of registered courses
 
-## Security Features
+## Advanced Features
 
-- Password hashing using PHP's `password_hash()`
-- CSRF token protection for forms
-- SQL injection prevention with prepared statements
-- Session-based authentication
-- Role-based access control
-- Input sanitization and validation
+### Schedule Generation
+- Automatic time slot generation for theory and lab sessions
+- Day combination management (MW, TR, etc.)
+- Conflict-free scheduling algorithms
 
-## File Structure
+### Dependency Management
+- Progressive system setup with dependency checking
+- Required data validation before enabling features
+- Smart form hiding/showing based on available data
 
-```
-crfms@v2/
-├── includes/
-│   ├── config.php          # Global configuration
-│   ├── db_connection.php   # Database connection
-│   ├── functions.php       # Utility functions
-│   ├── header.php         # Common header
-│   └── footer.php         # Common footer
-├── admin/                 # Admin panel
-│   ├── dashboard.php
-│   ├── departments.php
-│   ├── courses.php
-│   ├── faculty.php
-│   ├── students.php
-│   ├── sections.php
-│   ├── admins.php
-│   ├── config.php
-│   └── get_course_details.php
-├── faculty/               # Faculty panel
-│   ├── dashboard.php
-│   └── sections.php
-├── student/               # Student panel
-│   ├── dashboard.php
-│   ├── courses.php
-│   └── schedule.php
-├── database.sql           # Database schema
-├── index.php             # Main entry point
-├── login.php             # Login page
-├── logout.php            # Logout handler
-└── README.md             # This file
-```
+### Responsive Design
+- Mobile-friendly Bootstrap interface
+- Adaptive layouts for different screen sizes
+- Touch-friendly navigation
 
-## Database Schema
+## API Endpoints
+- `get_course_details.php`: AJAX course information retrieval
+- `get_student_details.php`: AJAX student data fetching
+- `get_theory_sections.php`: AJAX theory section listing
 
-The system uses 11 main tables:
-- `config` - System configuration
-- `departments` - Academic departments
-- `courses` - Course catalog
-- `prerequisites` - Course prerequisites
-- `faculty` - Faculty members
-- `students` - Student accounts
-- `sections` - Course sections
-- `registration` - Student registrations
-- `enrollments` - Final grades
-- `admins` - System administrators
+## Security Considerations
+- Input validation on all user inputs
+- SQL injection prevention through prepared statements
+- XSS protection through output escaping
+- Session hijacking prevention
+- CSRF token validation
+
+## Performance Features
+- Efficient database queries with proper indexing
+- Minimal AJAX calls for dynamic content
+- Optimized file structure for fast loading
+- Cached semester information
+
+## Browser Compatibility
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
 
 ## Troubleshooting
 
 ### Common Issues
+1. **Database Connection**: Check XAMPP MySQL service and credentials
+2. **Permission Errors**: Ensure proper file permissions
+3. **Session Issues**: Check PHP session configuration
+4. **Bootstrap/FA Loading**: Verify CDN connectivity
 
-1. **Database Connection Error**
-   - Check XAMPP MySQL service is running
-   - Verify database credentials in `config.php`
-
-2. **Page Not Loading**
-   - Ensure Apache is running in XAMPP
-   - Check file permissions
-   - Verify the URL path
-
-3. **Login Issues**
-   - Ensure admin account exists in database
-   - Check password hash is correct
-   - Clear browser cookies/cache
-
-4. **Permission Denied**
-   - Check user roles in database
-   - Verify session is active
-
-### Support
-
-For technical support or questions about the system, please contact the development team.
+### Debug Mode
+Enable error reporting in `includes/config.php` for development:
+```php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+```
 
 ## License
+This project is developed for East West University academic purposes.
 
-This system is developed for educational purposes. Please ensure appropriate licensing for production use.
+## Support
+For technical support or feature requests, please contact the development team.
+
+---
+
+**Version**: 2.0  
+**Last Updated**: September 2025  
+**Developer**: EWU Development Team
