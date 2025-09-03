@@ -54,7 +54,7 @@ CRFMS (Course Registration and Faculty Management System) is a comprehensive web
 ## Project Structure
 
 ```
-crfms@v2/
+crfms/
 ├── admin/                      # Administrator interface
 │   ├── admins.php             # Admin user management
 │   ├── config.php             # System configuration
@@ -155,7 +155,7 @@ crfms@v2/
 1. **Clone/Download the project**
    ```bash
    # Place the project in XAMPP htdocs folder
-   C:\xampp\htdocs\crfms@v2\
+   C:\xampp\htdocs\crfms\
    ```
 
 2. **Database Setup**
@@ -176,7 +176,7 @@ crfms@v2/
 
 4. **Start XAMPP Services**
    - Start Apache and MySQL services
-   - Access the application at `http://localhost/crfms@v2/`
+   - Access the application at `http://localhost/crfms/`
 
 5. **Initial Setup**
    - Create initial admin account through database

@@ -1,6 +1,6 @@
 <?php
 // Global configuration file
-define('BASE_URL', 'http://localhost/crfms@v2/');
+define('BASE_URL', 'http://localhost/crfms/');
 define('DB_HOST', 'localhost');
 define('DB_USERNAME', 'root');
 define('DB_PASSWORD', '');
